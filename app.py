@@ -120,7 +120,7 @@ if selected:
             # if files:
             #     file = st.selectbox("Select file to load:", files)
             #     obj = s3.get_object(Bucket=bucket_name, Key=file)
-                file_ext = selected_file_name
+                file_ext = selected_file_name.split(".")[-1].lower()
                 if file_ext == 'csv':
                     df = pd.read_csv(io.BytesIO(obj['Body'].read()))
                     st.dataframe(df)
