@@ -103,11 +103,23 @@ if selected:
         try:
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
             all_files = [obj['Key'] for obj in response.get('Contents', [])]
-            files = all_files  # Show all files
-            print(f"Files found for {selected}: {files}")
-            if files:
-                file = st.selectbox("Select file to load:", files)
-                obj = s3.get_object(Bucket=bucket_name, Key=file)
+
+            # Extract only file names for display
+            file_name_map = {key.split('/')[-1]: key for key in all_files}
+
+            print(f"Files found for {selected}: {list(file_name_map.keys())}")
+            if file_name_map:
+                selected_file_name = st.selectbox("Select file to load:", list(file_name_map.keys()))
+                selected_full_key = file_name_map[selected_file_name]
+
+                obj = s3.get_object(Bucket=bucket_name, Key=selected_full_key)
+            # response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+            # all_files = [obj['Key'] for obj in response.get('Contents', [])]
+            # files = all_files  # Show all files
+            # print(f"Files found for {selected}: {files}")
+            # if files:
+            #     file = st.selectbox("Select file to load:", files)
+            #     obj = s3.get_object(Bucket=bucket_name, Key=file)
                 file_ext = file.split('.')[-1].lower()
                 if file_ext == 'csv':
                     df = pd.read_csv(io.BytesIO(obj['Body'].read()))
