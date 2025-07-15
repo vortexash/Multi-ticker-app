@@ -106,7 +106,7 @@ if selected:
             files = all_files  # Show all files
             print(f"Files found for {selected}: {files}")
             if files:
-                file = st.selectbox("Select file to load:", [prefix + "past_year_trends_data.csv"])
+                file = st.selectbox("Select file to load:", [prefix])
                 obj = s3.get_object(Bucket=bucket_name, Key=file)
                 file_ext = file.split('.')[-1].lower()
                 if file_ext == 'csv':
