@@ -9,11 +9,10 @@ import io
 from dotenv import load_dotenv
 import os
 import re
+import time
 
 # Load environment variables
 load_dotenv()
-
-
 
 # Configure the page
 st.set_page_config(
@@ -25,9 +24,6 @@ st.set_page_config(
 
 st.title("📈 Ticker Analysis Dashboard")
 
-# Debug start
-# st.info("App reached initialization")
-
 # AWS Config
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -36,6 +32,7 @@ BUCKET_NAME = os.getenv("S3_BUCKET")
 
 
 def init_aws_client():
+    """Initialize S3 client with credentials from environment variables."""
     try:
         return boto3.client(
             's3',
@@ -47,17 +44,22 @@ def init_aws_client():
         st.error(f"AWS Configuration Error: {str(e)}")
         return None
 
-# Sidebar Setup
-st.sidebar.header("🔧 Configuration")
 
-# Removed S3 Bucket Name input from sidebar
-# bucket_name = st.sidebar.text_input("S3 Bucket Name", value=BUCKET_NAME)
-bucket_name = BUCKET_NAME  # Use environment variable or default
-email = st.sidebar.text_input("Email", value="user@example.com")
+# Initialize session state
+if 'available_tickers' not in st.session_state:
+    st.session_state['available_tickers'] = []
+if 'last_refresh' not in st.session_state:
+    st.session_state['last_refresh'] = time.time()
+
+# Sidebar
+st.sidebar.header("🔧 Configuration")
+bucket_name = BUCKET_NAME
+email = st.sidebar.text_input("Email", value="ashish123@example.com")
 
 # Ticker Input
 st.subheader("Enter Available Tickers")
 ticker_input = st.text_area("Enter ticker symbols (comma or newline separated):", height=120)
+
 if st.button("Submit", type="primary"):
     st.session_state['available_tickers'] = list({
         ticker.strip().upper()
@@ -67,22 +69,61 @@ if st.button("Submit", type="primary"):
 
 available_tickers = st.session_state.get('available_tickers', [])
 
+# Display tickers
 if available_tickers:
     st.success(f"Loaded {len(available_tickers)} tickers: {', '.join(available_tickers)}")
+
     if st.button("🚀 Process All Tickers"):
-        st.toast("Processing tickers...", icon="🚀")
+        st.info("Processing tickers...")
         api_url = "http://139.59.25.242:5000/submit-job"
-        filter_data = {"Country of incorporation": "United States", "Industry (US)": "Software"}  # Example only
+
+        # Full payload based on your example
         payload = {
             "ticker_names": available_tickers,
             "email": email,
-            "filter_data": filter_data
+            "economic_indicator_data": [
+                4.28, 4.58, 1.31, 4.27, 5.86, 3.3, 3.89, 3.11, 7.62, 0.33
+            ],
+            "filter_data": {
+                "Country of incorporation": "United States",
+                "Industry (US)": "Software (System & Application)",
+                "Industry (Global)": "Software (System & Application)",
+                "Do you have R&D expenses to capitalize": "Yes",
+                "Do you have operating lease commitments": "Yes",
+                "Cross holdings and other non-operating assets": 12345,
+                "Pre tax value": 8.67,
+                "Compound revenue": -3.91,
+                "Year of convergence": 3,
+                "Do you have employee options outstanding": "Yes",
+                "Number of options outstanding (in millions)": 0,
+                "Average strike price": 0,
+                "Average maturity": 0,
+                "Standard deviation on stock price": 44.54,
+                "Do you want to override cost of capital assumption": "Yes",
+                "If yes, enter the cost of capital after year 10": 8,
+                "Do you want to override return on capital assumption": "Yes",
+                "If yes, enter the return on capital you expect after year 10": 10,
+                "Do you want to override probability of failure assumption": "Yes",
+                "If yes, enter the probability of failure": 12,
+                "What do you want to tie your proceeds in failure to": "V",
+                "Enter the distress proceeds as percentage of book or fair value": 50,
+                "Do you want to override effective tax rate assumption": "Yes",
+                "Do you want to override NOL assumption": "No",
+                "If yes, enter the NOL that you are carrying over into year 1": 250,
+                "Do you want to override growth rate assumption": "Yes",
+                "If yes, enter the growth rate in perpetuity": 1,
+                "Do you want to override trapped cash assumption": "Yes",
+                "If yes, enter trapped cash (if taxes) or entire balance (if mistrust)": 140000,
+                "& Average tax rate of the foreign markets where the cash is trapped": 15,
+                "Comments": ""
+            }
         }
 
-        print("Payload:", payload)
+        st.write("Payload being sent:", payload)
+
         try:
             with st.spinner("Sending job to API..."):
-                res = requests.post(api_url, json=payload, timeout=60)
+                res = requests.post(api_url, json=payload, timeout=300)
                 if res.status_code == 200:
                     st.success("✅ Job submitted successfully!")
                     st.json(res.json())
@@ -91,47 +132,51 @@ if available_tickers:
         except Exception as e:
             st.error(f"API Request failed: {str(e)}")
 
-# Minimal viewer section (simplified)
+# Viewer Section
 st.subheader("📂 Ticker Viewer")
 selected = st.selectbox("Select ticker:", options=[""] + available_tickers)
+
+def fetch_s3_files(s3, bucket_name, prefix):
+    try:
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+        return [obj['Key'] for obj in response.get('Contents', [])]
+    except Exception as e:
+        st.error(f"S3 error: {str(e)}")
+        return []
 
 if selected:
     s3 = init_aws_client()
     if s3:
-        print(f"Selected ticker: {selected}")
         prefix = f"{email}/{selected}/"
-        try:
-            response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-            all_files = [obj['Key'] for obj in response.get('Contents', [])]
+        all_files = fetch_s3_files(s3, bucket_name, prefix)
 
-            # Extract only file names for display
-            file_name_map = {key.split('/')[-1]: key for key in all_files}
+        # Auto-refresh every 30s if no files yet
+        if not all_files:
+            st.warning("No files found for this ticker yet. It may still be processing.")
+            if time.time() - st.session_state['last_refresh'] > 30:
+                st.session_state['last_refresh'] = time.time()
+                st.experimental_rerun()
+            st.button("Refresh Now", on_click=lambda: st.experimental_rerun())
+            st.stop()
 
-            print(f"Files found for {selected}: {list(file_name_map.keys())}")
-            if file_name_map:
-                selected_file_name = st.selectbox("Select file to load:", list(file_name_map.keys()))
-                selected_full_key = file_name_map[selected_file_name]
+        # Map filenames to S3 keys
+        file_name_map = {key.split('/')[-1]: key for key in all_files}
+        selected_file_name = st.selectbox("Select file to load:", list(file_name_map.keys()))
+        selected_full_key = file_name_map[selected_file_name]
 
-                obj = s3.get_object(Bucket=bucket_name, Key=selected_full_key)
-            # response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-            # all_files = [obj['Key'] for obj in response.get('Contents', [])]
-            # files = all_files  # Show all files
-            # print(f"Files found for {selected}: {files}")
-            # if files:
-            #     file = st.selectbox("Select file to load:", files)
-            #     obj = s3.get_object(Bucket=bucket_name, Key=file)
-                file_ext = selected_file_name.split(".")[-1].lower()
-                if file_ext == 'csv':
-                    df = pd.read_csv(io.BytesIO(obj['Body'].read()))
-                    st.dataframe(df)
-                elif file_ext in ['txt', 'json']:
-                    content = obj['Body'].read().decode('utf-8')
-                    st.text(content)
-                elif file_ext in ['png', 'jpg', 'jpeg']:
-                    st.image(obj['Body'].read())
-                else:
-                    st.info(f"File type .{file_ext} not directly supported for preview.")
-            else:
-                st.warning("Still Processing Please wait...")
-        except Exception as e:
-            st.error(f"S3 error: {str(e)}")
+        obj = s3.get_object(Bucket=bucket_name, Key=selected_full_key)
+        file_ext = selected_file_name.split(".")[-1].lower()
+
+        # Display file based on type
+        if file_ext == 'csv':
+            df = pd.read_csv(io.BytesIO(obj['Body'].read()))
+            st.dataframe(df)
+        elif file_ext == 'json':
+            content = json.loads(obj['Body'].read().decode('utf-8'))
+            st.json(content)
+        elif file_ext == 'txt':
+            st.text(obj['Body'].read().decode('utf-8'))
+        elif file_ext in ['png', 'jpg', 'jpeg']:
+            st.image(obj['Body'].read())
+        else:
+            st.info(f"File type .{file_ext} not directly supported for preview.")
