@@ -154,25 +154,26 @@ if selected:
 
         # Auto-refresh every 30s if no files yet
         if not all_files:
-            st.warning("No files found for this ticker yet. It may still be processing.")
+            st.warning("Still Processing.")
             if time.time() - st.session_state['last_refresh'] > 30:
                 st.session_state['last_refresh'] = time.time()
                 st.experimental_rerun()
             st.button("Refresh Now", on_click=lambda: st.experimental_rerun())
             st.stop()
 
-        # Map filenames to S3 keys, excluding JSON files
+        # Exclude JSON files and any JSON-like text files (e.g., valuation_output_lfy.json.txt)
         file_name_map = {
             key.split('/')[-1]: key for key in all_files
-            if not key.lower().endswith('.json')  # Hides all JSON files
+            if not key.lower().endswith('.json')          # Hide raw JSON
+            and '.json.' not in key.lower()               # Hide JSON-like files
         }
 
-        # If only JSON files existed, show a warning and stop
+        # Stop if no remaining files
         if not file_name_map:
             st.warning("No viewable files (CSV, TXT, images) found for this ticker yet.")
             st.stop()
 
-        # Sort files by name (optional: could sort by last modified if desired)
+        # Sort alphabetically (can be changed to last modified later)
         sorted_files = sorted(file_name_map.keys())
         selected_file_name = st.selectbox("Select file to load:", sorted_files)
         selected_full_key = file_name_map[selected_file_name]
