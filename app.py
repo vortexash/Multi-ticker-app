@@ -154,7 +154,7 @@ if selected:
 
         # Auto-refresh every 30s if no files yet
         if not all_files:
-            st.warning("Still Processing.")
+            st.warning("Still Processing...")
             if time.time() - st.session_state['last_refresh'] > 30:
                 st.session_state['last_refresh'] = time.time()
                 st.experimental_rerun()
