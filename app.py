@@ -136,6 +136,7 @@ if available_tickers:
 st.subheader("📂 Ticker Viewer")
 selected = st.selectbox("Select ticker:", options=[""] + available_tickers)
 
+
 def fetch_s3_files(s3, bucket_name, prefix):
     try:
         response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
@@ -143,6 +144,7 @@ def fetch_s3_files(s3, bucket_name, prefix):
     except Exception as e:
         st.error(f"S3 error: {str(e)}")
         return []
+
 
 if selected:
     s3 = init_aws_client()
@@ -159,21 +161,29 @@ if selected:
             st.button("Refresh Now", on_click=lambda: st.experimental_rerun())
             st.stop()
 
-        # Map filenames to S3 keys
-        file_name_map = {key.split('/')[-1]: key for key in all_files}
-        selected_file_name = st.selectbox("Select file to load:", list(file_name_map.keys()))
+        # Map filenames to S3 keys, excluding JSON files
+        file_name_map = {
+            key.split('/')[-1]: key for key in all_files
+            if not key.lower().endswith('.json')  # Hides all JSON files
+        }
+
+        # If only JSON files existed, show a warning and stop
+        if not file_name_map:
+            st.warning("No viewable files (CSV, TXT, images) found for this ticker yet.")
+            st.stop()
+
+        # Sort files by name (optional: could sort by last modified if desired)
+        sorted_files = sorted(file_name_map.keys())
+        selected_file_name = st.selectbox("Select file to load:", sorted_files)
         selected_full_key = file_name_map[selected_file_name]
 
+        # Fetch and display the selected file
         obj = s3.get_object(Bucket=bucket_name, Key=selected_full_key)
         file_ext = selected_file_name.split(".")[-1].lower()
 
-        # Display file based on type
         if file_ext == 'csv':
             df = pd.read_csv(io.BytesIO(obj['Body'].read()))
             st.dataframe(df)
-        elif file_ext == 'json':
-            content = json.loads(obj['Body'].read().decode('utf-8'))
-            st.json(content)
         elif file_ext == 'txt':
             st.text(obj['Body'].read().decode('utf-8'))
         elif file_ext in ['png', 'jpg', 'jpeg']:
