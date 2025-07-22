@@ -54,7 +54,7 @@ if 'last_refresh' not in st.session_state:
 # Sidebar
 st.sidebar.header("🔧 Configuration")
 bucket_name = BUCKET_NAME
-email = st.sidebar.text_input("Email", value="ashish123@example.com")
+email = st.sidebar.text_input("Email", value="pronay@pavakicapital.com")
 
 # Ticker Input
 st.subheader("Enter Available Tickers")
